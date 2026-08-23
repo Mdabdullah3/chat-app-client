@@ -1,10 +1,10 @@
-// src/context/AuthContext.tsx
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/services/api';
-import { User, AuthResponse } from '@/types';
+import { TOKEN_KEY } from '@/services/api';
+import { authService } from '@/services/chat';
+import type { User } from '@/types';
 
 interface AuthContextType {
   user: User | null;
@@ -19,55 +19,65 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const logout = () => {
-    localStorage.removeItem('chat_token');
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
-    router.push('/login');
-  };
+  }, []);
 
-  const login = async (phone: string, name: string) => {
-    try {
-      setLoading(true);
-      const response = await api.post<AuthResponse>('/auth/login', { phone, name });
-      const { token: receivedToken, user: receivedUser } = response.data;
+  const logout = useCallback(() => {
+    clearSession();
+    router.replace('/login');
+  }, [clearSession, router]);
 
-      localStorage.setItem('chat_token', receivedToken);
-      setToken(receivedToken);
-      setUser(receivedUser);
-      router.push('/chat');
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
+  const login = useCallback(
+    async (phone: string, name: string) => {
+      const { token: newToken, user: newUser } = await authService.login(phone, name);
+      localStorage.setItem(TOKEN_KEY, newToken);
+      setToken(newToken);
+      setUser(newUser);
+      router.replace('/chat');
+    },
+    [router]
+  );
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      const savedToken = localStorage.getItem('chat_token');
-      if (savedToken) {
-        try {
-          setToken(savedToken);
-          const response = await api.get<User>('/auth/me');
-          setUser(response.data);
-        } catch (error) {
-          console.error('Session restoration failed:', error);
-          logout();
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setLoading(false);
-      }
+    let cancelled = false;
+
+    // Reads storage inside a promise so no state is set synchronously during the effect
+    const restore = async () => {
+      const savedToken = localStorage.getItem(TOKEN_KEY);
+      if (!savedToken) return null;
+      return { savedToken, me: await authService.me() };
     };
 
-    initializeAuth();
-  }, []);
+    restore()
+      .then((result) => {
+        if (cancelled || !result) return;
+        setToken(result.savedToken);
+        setUser(result.me);
+      })
+      .catch(() => {
+        if (!cancelled) clearSession();
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession]);
+
+  // Any 401 from the API layer invalidates the session
+  useEffect(() => {
+    const handleUnauthorized = () => clearSession();
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [clearSession]);
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, logout }}>
@@ -78,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

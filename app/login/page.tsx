@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,6 +7,7 @@ import * as z from 'zod';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Loader2 } from 'lucide-react';
+import { getErrorMessage } from '@/services/api';
 
 // Form validation schema using Zod
 const loginSchema = z.object({
@@ -34,7 +33,7 @@ export default function LoginPage() {
   // redirect if already logged in
   useEffect(() => {
     if (user) {
-      router.push('/chat');
+      router.replace('/chat');
     }
   }, [user, router]);
 
@@ -54,11 +53,8 @@ export default function LoginPage() {
     setServerError(null);
     try {
       await login(data.phone, data.name);
-    } catch (error: any) {
-      // API error handling
-      const errorMessage =
-        error.response?.data?.message || 'Something went wrong. Please try again.';
-      setServerError(errorMessage);
+    } catch (error) {
+      setServerError(getErrorMessage(error, 'Could not sign you in. Please try again.'));
     }
   };
 
@@ -93,9 +89,8 @@ export default function LoginPage() {
                 id="name"
                 type="text"
                 disabled={isSubmitting || authLoading}
-                className={`block w-full rounded-lg border px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm ${
-                  errors.name ? 'border-red-300' : 'border-gray-300'
-                }`}
+                className={`block w-full rounded-lg border px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm ${errors.name ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 placeholder="Ada Lovelace"
                 {...register('name')}
               />
@@ -112,9 +107,8 @@ export default function LoginPage() {
                 id="phone"
                 type="text"
                 disabled={isSubmitting || authLoading}
-                className={`block w-full rounded-lg border px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm ${
-                  errors.phone ? 'border-red-300' : 'border-gray-300'
-                }`}
+                className={`block w-full rounded-lg border px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm ${errors.phone ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 placeholder="+88017XXXXXXXX"
                 {...register('phone')}
               />
